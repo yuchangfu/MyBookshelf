@@ -8,9 +8,11 @@ import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.res.Configuration;
 import android.graphics.PorterDuff;
 import android.net.Uri;
 import android.os.BatteryManager;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.text.TextUtils;
@@ -72,6 +74,7 @@ import com.kunfei.bookshelf.utils.theme.ThemeStore;
 import com.kunfei.bookshelf.view.popupwindow.CheckAddShelfPop;
 import com.kunfei.bookshelf.view.popupwindow.MediaPlayerPop;
 import com.kunfei.bookshelf.view.popupwindow.MoreSettingPop;
+import com.kunfei.bookshelf.view.popupwindow.ReadAdjustMarginPop;
 import com.kunfei.bookshelf.view.popupwindow.ReadAdjustPop;
 import com.kunfei.bookshelf.view.popupwindow.ReadBottomMenu;
 import com.kunfei.bookshelf.view.popupwindow.ReadInterfacePop;
@@ -89,12 +92,15 @@ import com.kunfei.bookshelf.widget.page.TxtChapter;
 import com.kunfei.bookshelf.widget.page.animation.PageAnimation;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 
 import butterknife.BindView;
 import butterknife.ButterKnife;
 import kotlin.Unit;
+
+import static com.kunfei.bookshelf.view.activity.SourceEditActivity.EDIT_SOURCE;
 
 
 /**
@@ -128,6 +134,8 @@ public class ReadBookActivity extends MBaseActivity<ReadBookContract.Presenter> 
     PageView pageView;
     @BindView(R.id.readAdjustPop)
     ReadAdjustPop readAdjustPop;
+    @BindView(R.id.readAdjustMarginPop)
+    ReadAdjustMarginPop readAdjustMarginPop;
     @BindView(R.id.readInterfacePop)
     ReadInterfacePop readInterfacePop;
     @BindView(R.id.moreSettingPop)
@@ -169,6 +177,8 @@ public class ReadBookActivity extends MBaseActivity<ReadBookContract.Presenter> 
     private boolean aloudNextPage;
     private int lastX, lastY;
 
+    private boolean disReSetPage = false;
+
     @Override
     protected ReadBookContract.Presenter initInjector() {
         return new ReadBookPresenter();
@@ -192,6 +202,13 @@ public class ReadBookActivity extends MBaseActivity<ReadBookContract.Presenter> 
     protected void onCreateActivity() {
         setOrientation(readBookControl.getScreenDirection());
         setContentView(R.layout.activity_book_read);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && readBookControl.getToLh()) {
+            if (getResources().getConfiguration().orientation == Configuration.ORIENTATION_PORTRAIT) {
+                WindowManager.LayoutParams lp = getWindow().getAttributes();
+                lp.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+                getWindow().setAttributes(lp);
+            }
+        }
     }
 
     @Override
@@ -285,6 +302,7 @@ public class ReadBookActivity extends MBaseActivity<ReadBookContract.Presenter> 
         if (readBottomMenu.getVisibility() == View.VISIBLE
                 || readAdjustPop.getVisibility() == View.VISIBLE
                 || readInterfacePop.getVisibility() == View.VISIBLE
+                || readAdjustMarginPop.getVisibility() == View.VISIBLE
                 || moreSettingPop.getVisibility() == View.VISIBLE) {
             barColorType = 0;
         }
@@ -445,6 +463,7 @@ public class ReadBookActivity extends MBaseActivity<ReadBookContract.Presenter> 
                 llMenuTop.setVisibility(View.INVISIBLE);
                 readBottomMenu.setVisibility(View.INVISIBLE);
                 readAdjustPop.setVisibility(View.INVISIBLE);
+                readAdjustMarginPop.setVisibility(View.INVISIBLE);
                 readInterfacePop.setVisibility(View.INVISIBLE);
                 moreSettingPop.setVisibility(View.INVISIBLE);
                 initImmersionBar();
@@ -469,6 +488,7 @@ public class ReadBookActivity extends MBaseActivity<ReadBookContract.Presenter> 
                 llMenuTop.setVisibility(View.INVISIBLE);
                 readBottomMenu.setVisibility(View.INVISIBLE);
                 readAdjustPop.setVisibility(View.INVISIBLE);
+                readAdjustMarginPop.setVisibility(View.INVISIBLE);
                 readInterfacePop.setVisibility(View.INVISIBLE);
                 moreSettingPop.setVisibility(View.INVISIBLE);
                 initImmersionBar();
@@ -479,6 +499,12 @@ public class ReadBookActivity extends MBaseActivity<ReadBookContract.Presenter> 
 
             }
         });
+        if (MApplication.isEInkMode) {
+            menuTopIn.setDuration(0);
+            menuTopOut.setDuration(0);
+            menuBottomIn.setDuration(0);
+            menuBottomOut.setDuration(0);
+        }
     }
 
     @Override
@@ -495,6 +521,7 @@ public class ReadBookActivity extends MBaseActivity<ReadBookContract.Presenter> 
         initBottomMenu();
         initReadInterfacePop();
         initReadAdjustPop();
+        initReadAdjustMarginPop();
         initMoreSettingPop();
         initMediaPlayer();
         initReadLongPressPop();
@@ -623,19 +650,49 @@ public class ReadBookActivity extends MBaseActivity<ReadBookContract.Presenter> 
     private void initReadAdjustPop() {
         readAdjustPop.setListener(this, new ReadAdjustPop.Callback() {
             @Override
+            public void speechRateFollowSys() {
+                if (ReadAloudService.running) {
+                    ReadAloudService.stop(ReadBookActivity.this);
+                }
+            }
+
+            @Override
             public void changeSpeechRate(int speechRate) {
                 if (ReadAloudService.running) {
                     ReadAloudService.pause(ReadBookActivity.this);
                     ReadAloudService.resume(ReadBookActivity.this);
                 }
             }
+        });
+    }
+
+    /**
+     * 初始化调节
+     */
+    private void initReadAdjustMarginPop() {
+        readAdjustMarginPop.setListener(this, new ReadAdjustMarginPop.Callback() {
 
             @Override
-            public void speechRateFollowSys() {
-                if (ReadAloudService.running) {
-                    ReadAloudService.stop(ReadBookActivity.this);
+            public void upTextSize() {
+                if (mPageLoader != null) {
+                    mPageLoader.setTextSize();
                 }
             }
+
+            @Override
+            public void upMargin() {
+                if (mPageLoader != null) {
+                    mPageLoader.upMargin();
+                }
+            }
+
+            @Override
+            public void refresh() {
+                if (mPageLoader != null) {
+                    mPageLoader.refreshUi();
+                }
+            }
+
         });
     }
 
@@ -719,6 +776,11 @@ public class ReadBookActivity extends MBaseActivity<ReadBookContract.Presenter> 
     @SuppressLint("ClickableViewAccessibility")
     @Override
     protected void bindEvent() {
+        tvChapterName.setOnClickListener(v -> {
+            if (mPresenter.getBookSource() != null) {
+                SourceEditActivity.startThis(this, mPresenter.getBookSource());
+            }
+        });
         //打开URL
         tvUrl.setOnClickListener(view -> {
             try {
@@ -767,12 +829,14 @@ public class ReadBookActivity extends MBaseActivity<ReadBookContract.Presenter> 
                         mPresenter.getBookShelf().setDurChapterName(mPresenter.getChapterList().get(pos).getDurChapterName());
                         actionBar.setTitle(mPresenter.getBookShelf().getBookInfoBean().getName());
                         if (mPresenter.getBookShelf().getChapterListSize() > 0) {
+                            tvChapterName.setVisibility(View.VISIBLE);
                             tvChapterName.setText(mPresenter.getChapterList().get(pos).getDurChapterName());
+                            tvUrl.setVisibility(View.VISIBLE);
                             tvUrl.setText(NetworkUtils.getAbsoluteURL(mPresenter.getBookShelf().getBookInfoBean().getChapterUrl(),
                                     mPresenter.getChapterList().get(pos).getDurChapterUrl()));
                         } else {
-                            tvChapterName.setText("");
-                            tvUrl.setText("");
+                            tvChapterName.setVisibility(View.GONE);
+                            tvUrl.setVisibility(View.GONE);
                         }
 
                         if (mPresenter.getBookShelf().getChapterListSize() == 1) {
@@ -1072,7 +1136,7 @@ public class ReadBookActivity extends MBaseActivity<ReadBookContract.Presenter> 
 
                                                 moDialogHUD.dismiss();
 
-                                                refreshDurChapter();
+                                                refresh(false);
                                             }
                                         })).show();
 
@@ -1275,18 +1339,28 @@ public class ReadBookActivity extends MBaseActivity<ReadBookContract.Presenter> 
      */
     private void setCharset() {
         final String charset = mPresenter.getBookShelf().getBookInfoBean().getCharset();
+        String[] a = new String[]{"UTF-8", "GB2312", "GBK", "Unicode", "UTF-16", "UTF-16LE", "ASCII"};
+        List<String> values = new ArrayList<>(Arrays.asList(a));
         InputDialog.builder(this)
                 .setTitle(getString(R.string.input_charset))
                 .setDefaultValue(charset)
-                .setAdapterValues(new String[]{"UTF-8", "GB2312", "GBK", "Unicode", "UTF-16", "UTF-16LE", "ASCII"})
-                .setCallback(inputText -> {
-                    inputText = inputText.trim();
-                    if (!Objects.equals(charset, inputText)) {
-                        mPresenter.getBookShelf().getBookInfoBean().setCharset(inputText);
-                        mPresenter.saveProgress();
-                        if (mPageLoader != null) {
-                            mPageLoader.updateChapter();
+                .setAdapterValues(values)
+                .setCallback(new InputDialog.Callback() {
+                    @Override
+                    public void setInputText(String inputText) {
+                        inputText = inputText.trim();
+                        if (!Objects.equals(charset, inputText)) {
+                            mPresenter.getBookShelf().getBookInfoBean().setCharset(inputText);
+                            mPresenter.saveProgress();
+                            if (mPageLoader != null) {
+                                mPageLoader.updateChapter();
+                            }
                         }
+                    }
+
+                    @Override
+                    public void delete(String value) {
+
                     }
                 }).show();
     }
@@ -1353,6 +1427,16 @@ public class ReadBookActivity extends MBaseActivity<ReadBookContract.Presenter> 
     }
 
     /**
+     * 显示自定义边界调节
+     */
+    public void readAdjustMarginIn() {
+        flMenu.setVisibility(View.VISIBLE);
+        readAdjustMarginPop.show();
+        readAdjustMarginPop.setVisibility(View.VISIBLE);
+        readAdjustMarginPop.startAnimation(menuBottomIn);
+    }
+
+    /**
      * 显示界面设置
      */
     private void readInterfaceIn() {
@@ -1401,6 +1485,9 @@ public class ReadBookActivity extends MBaseActivity<ReadBookContract.Presenter> 
             }
             if (readInterfacePop.getVisibility() == View.VISIBLE) {
                 readInterfacePop.startAnimation(menuBottomOut);
+            }
+            if (readAdjustMarginPop.getVisibility() == View.VISIBLE) {
+                readAdjustMarginPop.startAnimation(menuBottomOut);
             }
         }
     }
@@ -1570,6 +1657,7 @@ public class ReadBookActivity extends MBaseActivity<ReadBookContract.Presenter> 
             if (keyCode == KeyEvent.KEYCODE_BACK) {
                 if (readInterfacePop.getVisibility() == View.VISIBLE
                         || readAdjustPop.getVisibility() == View.VISIBLE
+                        || readAdjustMarginPop.getVisibility() == View.VISIBLE
                         || moreSettingPop.getVisibility() == View.VISIBLE) {
                     popMenuOut();
                     return true;
@@ -1745,6 +1833,11 @@ public class ReadBookActivity extends MBaseActivity<ReadBookContract.Presenter> 
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         initImmersionBar();
+        if (requestCode == EDIT_SOURCE) {
+            if (resultCode == RESULT_OK) {
+                mPresenter.upBookSource();
+            }
+        }
     }
 
     @SuppressLint("DefaultLocale")
